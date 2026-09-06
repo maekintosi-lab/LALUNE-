@@ -3,11 +3,18 @@
 import { FormEvent, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
+type Comment = {
+  id: number;
+  content: string;
+  created_at: string;
+};
+
 type Post = {
   id: number;
   title: string;
   content: string;
   created_at: string;
+  comments: Comment[];
 };
 
 function formatDate(dateString: string) {
@@ -18,6 +25,75 @@ function formatDate(dateString: string) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function CommentSection({
+  postId,
+  comments,
+  onCommentAdded,
+}: {
+  postId: number;
+  comments: Comment[];
+  onCommentAdded: (postId: number, comment: Comment) => void;
+}) {
+  const [text, setText] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (!text.trim() || submitting) return;
+
+    setSubmitting(true);
+    const { data } = await supabase
+      .from("comments")
+      .insert({ post_id: postId, content: text.trim() })
+      .select("id, content, created_at")
+      .single();
+
+    if (data) {
+      onCommentAdded(postId, data);
+      setText("");
+    }
+    setSubmitting(false);
+  }
+
+  return (
+    <div className="mt-4 pl-4">
+      {comments.length > 0 && (
+        <ul className="mb-3 flex flex-col gap-2">
+          {comments.map((comment) => (
+            <li key={comment.id} className="text-sm">
+              <div className="flex items-baseline gap-2">
+                <span className="text-xs text-neutral-400">익명</span>
+                <span className="text-xs text-neutral-300">
+                  {formatDate(comment.created_at)}
+                </span>
+              </div>
+              <p className="whitespace-pre-wrap text-neutral-600">
+                {comment.content}
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
+      <form onSubmit={handleSubmit} className="flex gap-2">
+        <input
+          type="text"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="댓글을 입력해 주세요."
+          className="flex-1 border-b border-neutral-200 bg-transparent py-1 text-sm outline-none placeholder:text-neutral-400 focus:border-neutral-800"
+        />
+        <button
+          type="submit"
+          disabled={submitting}
+          className="shrink-0 text-xs font-medium text-neutral-500 hover:text-neutral-900 disabled:opacity-50"
+        >
+          등록
+        </button>
+      </form>
+    </div>
+  );
 }
 
 export default function Home() {
@@ -31,8 +107,9 @@ export default function Home() {
     async function loadPosts() {
       const { data } = await supabase
         .from("posts")
-        .select("id, title, content, created_at")
-        .order("created_at", { ascending: false });
+        .select("id, title, content, created_at, comments(id, content, created_at)")
+        .order("created_at", { ascending: false })
+        .order("created_at", { ascending: true, referencedTable: "comments" });
 
       setPosts(data ?? []);
       setLoading(false);
@@ -53,11 +130,21 @@ export default function Home() {
       .single();
 
     if (data) {
-      setPosts([data, ...posts]);
+      setPosts([{ ...data, comments: [] }, ...posts]);
       setTitle("");
       setContent("");
     }
     setSubmitting(false);
+  }
+
+  function handleCommentAdded(postId: number, comment: Comment) {
+    setPosts((prev) =>
+      prev.map((post) =>
+        post.id === postId
+          ? { ...post, comments: [...post.comments, comment] }
+          : post
+      )
+    );
   }
 
   return (
@@ -125,6 +212,11 @@ export default function Home() {
                 <span className="mt-2 inline-block text-xs text-neutral-400">
                   익명
                 </span>
+                <CommentSection
+                  postId={post.id}
+                  comments={post.comments}
+                  onCommentAdded={handleCommentAdded}
+                />
               </li>
             ))}
           </ul>
