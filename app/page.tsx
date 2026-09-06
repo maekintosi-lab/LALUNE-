@@ -1,31 +1,17 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase";
 
 type Post = {
   id: number;
   title: string;
   content: string;
-  createdAt: Date;
+  created_at: string;
 };
 
-const initialPosts: Post[] = [
-  {
-    id: 2,
-    title: "환불은 얼마나 걸리나요?",
-    content: "결제 취소 후 환불까지 영업일 기준 3~5일 정도 소요됩니다.",
-    createdAt: new Date("2026-09-05T10:20:00"),
-  },
-  {
-    id: 1,
-    title: "배송 조회는 어디서 하나요?",
-    content: "주문 내역 페이지의 '배송 조회' 버튼을 눌러 확인하실 수 있습니다.",
-    createdAt: new Date("2026-09-04T15:40:00"),
-  },
-];
-
-function formatDate(date: Date) {
-  return date.toLocaleString("ko-KR", {
+function formatDate(dateString: string) {
+  return new Date(dateString).toLocaleString("ko-KR", {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -35,25 +21,43 @@ function formatDate(date: Date) {
 }
 
 export default function Home() {
-  const [posts, setPosts] = useState<Post[]>(initialPosts);
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [loading, setLoading] = useState(true);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
-  const nextId = posts.length > 0 ? Math.max(...posts.map((p) => p.id)) + 1 : 1;
+  const [submitting, setSubmitting] = useState(false);
 
-  function handleSubmit(e: FormEvent) {
+  useEffect(() => {
+    async function loadPosts() {
+      const { data } = await supabase
+        .from("posts")
+        .select("id, title, content, created_at")
+        .order("created_at", { ascending: false });
+
+      setPosts(data ?? []);
+      setLoading(false);
+    }
+
+    loadPosts();
+  }, []);
+
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!title.trim() || !content.trim()) return;
+    if (!title.trim() || !content.trim() || submitting) return;
 
-    const newPost: Post = {
-      id: nextId,
-      title: title.trim(),
-      content: content.trim(),
-      createdAt: new Date(),
-    };
+    setSubmitting(true);
+    const { data } = await supabase
+      .from("posts")
+      .insert({ title: title.trim(), content: content.trim() })
+      .select("id, title, content, created_at")
+      .single();
 
-    setPosts([newPost, ...posts]);
-    setTitle("");
-    setContent("");
+    if (data) {
+      setPosts([data, ...posts]);
+      setTitle("");
+      setContent("");
+    }
+    setSubmitting(false);
   }
 
   return (
@@ -84,9 +88,10 @@ export default function Home() {
             <span className="text-xs text-neutral-400">작성자: 익명</span>
             <button
               type="submit"
-              className="rounded-full bg-neutral-900 px-5 py-2 text-xs font-medium text-white transition hover:bg-neutral-700"
+              disabled={submitting}
+              className="rounded-full bg-neutral-900 px-5 py-2 text-xs font-medium text-white transition hover:bg-neutral-700 disabled:opacity-50"
             >
-              등록
+              {submitting ? "등록 중..." : "등록"}
             </button>
           </div>
         </form>
@@ -96,7 +101,11 @@ export default function Home() {
         <h2 className="mb-4 text-sm font-medium text-neutral-500">
           문의 목록 ({posts.length})
         </h2>
-        {posts.length === 0 ? (
+        {loading ? (
+          <p className="py-12 text-center text-sm text-neutral-400">
+            불러오는 중...
+          </p>
+        ) : posts.length === 0 ? (
           <p className="py-12 text-center text-sm text-neutral-400">
             등록된 문의가 없습니다.
           </p>
@@ -107,7 +116,7 @@ export default function Home() {
                 <div className="flex items-baseline justify-between gap-4">
                   <h3 className="text-sm font-medium">{post.title}</h3>
                   <span className="shrink-0 text-xs text-neutral-400">
-                    {formatDate(post.createdAt)}
+                    {formatDate(post.created_at)}
                   </span>
                 </div>
                 <p className="mt-2 whitespace-pre-wrap text-sm text-neutral-600">
