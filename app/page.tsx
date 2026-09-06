@@ -133,8 +133,25 @@ export default function Home() {
       setPosts([{ ...data, comments: [] }, ...posts]);
       setTitle("");
       setContent("");
+      requestAutoComment(data.id, data.title, data.content);
     }
     setSubmitting(false);
+  }
+
+  async function requestAutoComment(postId: number, title: string, content: string) {
+    try {
+      const res = await fetch("/api/generate-comment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ postId, title, content }),
+      });
+      const result = await res.json();
+      if (result.comment) {
+        handleCommentAdded(postId, result.comment);
+      }
+    } catch {
+      // auto-comment is best-effort; ignore failures
+    }
   }
 
   function handleCommentAdded(postId: number, comment: Comment) {
